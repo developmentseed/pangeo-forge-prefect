@@ -274,8 +274,8 @@ def test_configure_run_config_azure(azure_bakery, meta_azure, k8s_job_template, 
 
 def test_check_versions(aws_bakery, meta_aws):
     versions = Versions(
-        pangeo_notebook_version="2021.06.05",
-        pangeo_forge_version="0.4.0",
+        pangeo_notebook_version="2021.07.17",
+        pangeo_forge_version="0.5.0",
         prefect_version="0.14.22",
     )
     assert check_versions(meta_aws, aws_bakery.cluster, versions)
