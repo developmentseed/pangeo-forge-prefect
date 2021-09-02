@@ -10,6 +10,7 @@ setup(
         "dacite==1.6.0",
         "dask-cloudprovider[aws]>=2021.3.0",
         "dask-kubernetes>=2021.3.1",
+        "distributed>=2021.7.0",
         "s3fs>=0.6.0",
         "adlfs>=0.7.5",
     ],

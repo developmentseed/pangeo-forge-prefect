@@ -1,3 +1,4 @@
+import gc
 import importlib
 import logging
 import os
@@ -5,6 +6,7 @@ from dataclasses import dataclass
 from functools import wraps
 from typing import Dict
 
+import distributed
 import yaml
 from adlfs import AzureBlobFileSystem
 from dacite import from_dict
@@ -70,6 +72,29 @@ def set_log_level(func):
     def wrapper(*args, **kwargs):
         logging.basicConfig()
         logging.getLogger("pangeo_forge_recipes").setLevel(level=logging.DEBUG)
+        result = func(*args, **kwargs)
+        return result
+
+    return wrapper
+
+
+def register_plugin(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        class WorkerExplicitGC(distributed.WorkerPlugin):
+            def setup(self, worker):
+                self.worker = worker
+                gc.disable()
+
+            def transition(self, key, start, finish, *args, **kwargs):
+                if finish == "executing":
+                    self.worker._throttled_gc.collect()
+                    if gc.isenabled():
+                        gc.disable()
+
+        plugin = WorkerExplicitGC()
+        client = distributed.get_client()
+        client.register_worker_plugin(plugin)
         result = func(*args, **kwargs)
         return result
 
@@ -299,7 +324,7 @@ def recipe_to_flow(
     flow.executor = dask_executor
 
     for flow_task in flow.tasks:
-        flow_task.run = set_log_level(flow_task.run)
+        flow_task.run = register_plugin(set_log_level(flow_task.run))
 
     flow.name = recipe_id
     return flow
