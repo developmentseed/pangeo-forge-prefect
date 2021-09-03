@@ -14,7 +14,7 @@ from dask_kubernetes.objects import make_pod_spec
 from pangeo_forge_recipes.recipes import XarrayZarrRecipe
 from pangeo_forge_recipes.recipes.base import BaseRecipe
 from pangeo_forge_recipes.storage import CacheFSSpecTarget, FSSpecTarget, MetadataTarget
-from prefect import client, storage
+from prefect import client, storage, task
 from prefect.executors import DaskExecutor
 from prefect.run_configs import ECSRun, KubernetesRun
 from s3fs import S3FileSystem
@@ -78,13 +78,12 @@ def set_log_level(func):
     return wrapper
 
 
-def register_plugin(func):
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        class WorkerExplicitGC(distributed.WorkerPlugin):
-            def setup(self, worker):
-                self.worker = worker
-                gc.disable()
+@task
+def register_plugin():
+    class WorkerExplicitGC(distributed.WorkerPlugin):
+        def setup(self, worker):
+            self.worker = worker
+            gc.disable()
 
             def transition(self, key, start, finish, *args, **kwargs):
                 if finish == "executing":
@@ -92,13 +91,9 @@ def register_plugin(func):
                     if gc.isenabled():
                         gc.disable()
 
-        plugin = WorkerExplicitGC()
-        client = distributed.get_client()
-        client.register_worker_plugin(plugin)
-        result = func(*args, **kwargs)
-        return result
-
-    return wrapper
+    plugin = WorkerExplicitGC()
+    client = distributed.get_client()
+    client.register_worker_plugin(plugin)
 
 
 def configure_targets(
@@ -322,10 +317,10 @@ def recipe_to_flow(
     run_config = configure_run_config(bakery.cluster, meta.bakery, recipe_id, secrets)
     flow.run_config = run_config
     flow.executor = dask_executor
-
     for flow_task in flow.tasks:
-        flow_task.run = register_plugin(set_log_level(flow_task.run))
+        flow_task.run = set_log_level(flow_task.run)
 
+    flow.add_task(register_plugin)
     flow.name = recipe_id
     return flow
 
